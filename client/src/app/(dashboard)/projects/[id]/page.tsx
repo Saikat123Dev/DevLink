@@ -45,9 +45,12 @@ import {
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
-
 interface User {
   id: string;
   name: string;
@@ -485,6 +488,13 @@ export default function ProjectDetailPage() {
   // Monaco editor theme
   const [editorTheme, setEditorTheme] = useState<ThemeName>('vs-dark');
 
+  // README documentation state
+  const [readmeContent, setReadmeContent] = useState<string>('');
+  const [loadingReadme, setLoadingReadme] = useState(false);
+
+  // Find README.md in repoStructure (moved before hooks to avoid conditional hook calls)
+  const readmeFile = repoStructure?.files.find(f => f.name.toLowerCase() === 'readme.md');
+
   useEffect(() => {
     // Check authentication
     const token = localStorage.getItem("authToken");
@@ -505,6 +515,30 @@ export default function ProjectDetailPage() {
       router.push("/login");
     }
   }, [projectId, router]);
+
+  // Fetch README content when repo structure is loaded
+  useEffect(() => {
+    const fetchReadme = async () => {
+      if (repoStructure && readmeFile && readmeFile.type === 'file') {
+        try {
+          setLoadingReadme(true);
+          const response = await fetch(
+            `https://api.github.com/repos/${repoStructure.owner}/${repoStructure.repo}/contents/${readmeFile.path}`
+          );
+          if (response.ok) {
+            const data = await response.json();
+            const content = atob(data.content);
+            setReadmeContent(content);
+          }
+        } catch (error) {
+          console.error('Failed to fetch README:', error);
+        } finally {
+          setLoadingReadme(false);
+        }
+      }
+    };
+    fetchReadme();
+  }, [repoStructure, readmeFile]);
 
   const fetchProject = async () => {
     try {
@@ -1194,6 +1228,7 @@ export default function ProjectDetailPage() {
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
+              <TabsTrigger value="documentation">Documentation</TabsTrigger>
               <TabsTrigger value="code">Code Repository</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
             </TabsList>
@@ -1464,6 +1499,269 @@ export default function ProjectDetailPage() {
                   )}
                 </DialogContent>
               </Dialog>
+            </TabsContent>
+
+            <TabsContent value="documentation" className="space-y-6">
+              <Card className="overflow-hidden">
+                <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                        <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">Project Documentation</CardTitle>
+                        {readmeFile && repoStructure && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {repoStructure.owner}/{repoStructure.repo}/README.md
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {readmeFile && repoStructure && (
+                      <a
+                        href={`https://github.com/${repoStructure.owner}/${repoStructure.repo}/blob/${repoStructure.branch}/README.md`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="outline" size="sm">
+                          <Github className="h-4 w-4 mr-2" />
+                          View on GitHub
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {!project.githubUrl ? (
+                    <div className="text-center py-20 px-4">
+                      <div className="inline-flex p-4 rounded-full bg-blue-100 dark:bg-blue-900/20 mb-4">
+                        <FileText className="h-12 w-12 text-blue-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2">No Repository Connected</h3>
+                      <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                        Connect a GitHub repository to view project documentation from README.md
+                      </p>
+                      {canManageProject() && (
+                        <Button onClick={() => setIsAddRepoModalOpen(true)} size="lg">
+                          <Github className="h-4 w-4 mr-2" />
+                          Connect Repository
+                        </Button>
+                      )}
+                    </div>
+                  ) : !repoStructure ? (
+                    <div className="text-center py-20 px-4">
+                      <div className="inline-flex p-4 rounded-full bg-blue-100 dark:bg-blue-900/20 mb-4">
+                        <FileText className="h-12 w-12 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2">Load Repository</h3>
+                      <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                        Load the repository to view project documentation
+                      </p>
+                      <Button onClick={fetchRepoStructure} disabled={loadingRepo} size="lg">
+                        {loadingRepo ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Load Repository
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  ) : !readmeFile ? (
+                    <div className="text-center py-20 px-4">
+                      <div className="inline-flex p-4 rounded-full bg-orange-100 dark:bg-orange-900/20 mb-4">
+                        <FileText className="h-12 w-12 text-orange-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2">No Documentation Found</h3>
+                      <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+                        This repository doesn't contain a README.md file.
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Add a README.md file to your repository to display documentation here.
+                      </p>
+                    </div>
+                  ) : loadingReadme ? (
+                    <div className="flex items-center justify-center py-20">
+                      <div className="text-center">
+                        <Loader2 className="h-10 w-10 animate-spin text-blue-600 dark:text-blue-400 mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground">Loading documentation...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="min-h-[600px] bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+                      <div className="max-w-5xl mx-auto px-8 py-12">
+                        <article className="prose prose-lg dark:prose-invert max-w-none
+                          prose-headings:scroll-mt-20 prose-headings:font-bold prose-headings:tracking-tight
+                          prose-h1:text-5xl prose-h1:mb-8 prose-h1:pb-6 prose-h1:border-b-2 prose-h1:border-gradient-to-r prose-h1:from-blue-500 prose-h1:to-purple-500
+                          prose-h1:bg-gradient-to-r prose-h1:from-blue-600 prose-h1:to-purple-600 dark:prose-h1:from-blue-400 dark:prose-h1:to-purple-400 prose-h1:bg-clip-text prose-h1:text-transparent
+                          prose-h2:text-3xl prose-h2:mt-16 prose-h2:mb-6 prose-h2:text-gray-800 dark:prose-h2:text-gray-100 prose-h2:border-l-4 prose-h2:border-blue-500 prose-h2:pl-4
+                          prose-h3:text-2xl prose-h3:mt-10 prose-h3:mb-4 prose-h3:text-gray-700 dark:prose-h3:text-gray-200
+                          prose-h4:text-xl prose-h4:mt-8 prose-h4:mb-3 prose-h4:text-gray-600 dark:prose-h4:text-gray-300
+                          prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-relaxed prose-p:mb-6 prose-p:text-[1.05rem]
+                          prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline prose-a:font-medium prose-a:transition-all hover:prose-a:text-blue-700 dark:hover:prose-a:text-blue-300 hover:prose-a:underline hover:prose-a:decoration-2 hover:prose-a:underline-offset-4
+                          prose-strong:text-gray-900 dark:prose-strong:text-gray-100 prose-strong:font-bold prose-strong:bg-yellow-100 dark:prose-strong:bg-yellow-900/30 prose-strong:px-1 prose-strong:rounded
+                          prose-em:text-gray-700 dark:prose-em:text-gray-300 prose-em:italic
+                          prose-code:text-pink-600 dark:prose-code:text-pink-400 prose-code:bg-pink-50 dark:prose-code:bg-pink-950/30 prose-code:px-2 prose-code:py-1 prose-code:rounded-md prose-code:font-mono prose-code:text-sm prose-code:font-semibold prose-code:border prose-code:border-pink-200 dark:prose-code:border-pink-800 prose-code:before:content-[''] prose-code:after:content-['']
+                          prose-pre:bg-gradient-to-br prose-pre:from-gray-900 prose-pre:via-slate-900 prose-pre:to-gray-900 dark:prose-pre:from-black dark:prose-pre:via-gray-950 dark:prose-pre:to-black prose-pre:border-2 prose-pre:border-gray-700 dark:prose-pre:border-gray-600 prose-pre:rounded-xl prose-pre:shadow-2xl prose-pre:p-6 prose-pre:my-8 prose-pre:overflow-x-auto
+                          prose-blockquote:border-l-[6px] prose-blockquote:border-blue-500 dark:prose-blockquote:border-blue-400 prose-blockquote:bg-gradient-to-r prose-blockquote:from-blue-50 prose-blockquote:to-indigo-50 dark:prose-blockquote:from-blue-950/30 dark:prose-blockquote:to-indigo-950/30 prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:rounded-r-xl prose-blockquote:my-8 prose-blockquote:italic prose-blockquote:shadow-md
+                          prose-ul:list-disc prose-ul:pl-8 prose-ul:mb-6 prose-ul:space-y-2
+                          prose-ol:list-decimal prose-ol:pl-8 prose-ol:mb-6 prose-ol:space-y-2
+                          prose-li:text-gray-700 dark:prose-li:text-gray-300 prose-li:leading-relaxed
+                          prose-li:marker:text-blue-500 dark:prose-li:marker:text-blue-400 prose-li:marker:font-bold
+                          prose-img:rounded-2xl prose-img:shadow-2xl prose-img:my-10 prose-img:border-4 prose-img:border-white dark:prose-img:border-gray-800 prose-img:ring-4 prose-img:ring-gray-100 dark:prose-img:ring-gray-900
+                          prose-table:border-collapse prose-table:w-full prose-table:my-10 prose-table:shadow-lg prose-table:rounded-lg prose-table:overflow-hidden
+                          prose-thead:bg-gradient-to-r prose-thead:from-blue-500 prose-thead:to-purple-500 prose-thead:text-white
+                          prose-th:px-6 prose-th:py-4 prose-th:text-left prose-th:font-bold prose-th:text-sm prose-th:uppercase prose-th:tracking-wider prose-th:border-0
+                          prose-td:px-6 prose-td:py-4 prose-td:border-b prose-td:border-gray-200 dark:prose-td:border-gray-700 prose-td:text-gray-700 dark:prose-td:text-gray-300
+                          prose-tbody:bg-white dark:prose-tbody:bg-gray-800 prose-tr:transition-colors hover:prose-tr:bg-gray-50 dark:hover:prose-tr:bg-gray-700/50
+                          prose-hr:border-gray-300 dark:prose-hr:border-gray-700 prose-hr:my-12 prose-hr:border-t-2
+                        ">
+                          <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]}
+                            rehypePlugins={[rehypeRaw, rehypeHighlight]}
+                            skipHtml={false}
+                            components={{
+                              code({ node, inline, className, children, ...props }: any) {
+                                const match = /language-(\w+)/.exec(className || '');
+                                const language = match ? match[1] : '';
+                                
+                                if (inline) {
+                                  return (
+                                    <code className={className} {...props}>
+                                      {children}
+                                    </code>
+                                  );
+                                }
+                                
+                                return (
+                                  <div className="relative group not-prose my-8">
+                                    <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-gray-800 to-gray-900 dark:from-gray-900 dark:to-black px-4 py-2 rounded-t-xl flex items-center justify-between z-10">
+                                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                                        {language || 'code'}
+                                      </span>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
+                                          toast.success('Code copied to clipboard');
+                                        }}
+                                        className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-all opacity-0 group-hover:opacity-100 transform group-hover:scale-100 scale-95"
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                        Copy
+                                      </button>
+                                    </div>
+                                    <pre className={`${className} pt-12 rounded-xl overflow-x-auto`}>
+                                      <code {...props}>{children}</code>
+                                    </pre>
+                                  </div>
+                                );
+                              },
+                              p({ node, children, ...props }) {
+                                return (
+                                  <p className="my-6" {...props}>
+                                    {children}
+                                  </p>
+                                );
+                              },
+                              h1({ node, children, ...props }) {
+                                return (
+                                  <h1 className="scroll-mt-20" {...props}>
+                                    {children}
+                                  </h1>
+                                );
+                              },
+                              h2({ node, children, ...props }) {
+                                return (
+                                  <h2 className="scroll-mt-20" {...props}>
+                                    {children}
+                                  </h2>
+                                );
+                              },
+                              h3({ node, children, ...props }) {
+                                return (
+                                  <h3 className="scroll-mt-20" {...props}>
+                                    {children}
+                                  </h3>
+                                );
+                              },
+                              ul({ node, children, ...props }) {
+                                return (
+                                  <ul className="my-6 space-y-3" {...props}>
+                                    {children}
+                                  </ul>
+                                );
+                              },
+                              ol({ node, children, ...props }) {
+                                return (
+                                  <ol className="my-6 space-y-3" {...props}>
+                                    {children}
+                                  </ol>
+                                );
+                              },
+                              li({ node, children, ...props }) {
+                                return (
+                                  <li className="leading-relaxed" {...props}>
+                                    {children}
+                                  </li>
+                                );
+                              },
+                              blockquote({ node, children, ...props }) {
+                                return (
+                                  <blockquote className="my-8" {...props}>
+                                    {children}
+                                  </blockquote>
+                                );
+                              },
+                              a({ node, children, href, ...props }) {
+                                return (
+                                  <a 
+                                    href={href} 
+                                    target={href?.startsWith('http') ? '_blank' : undefined}
+                                    rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
+                                    {...props}
+                                  >
+                                    {children}
+                                  </a>
+                                );
+                              },
+                              img({ node, src, alt, ...props }) {
+                                return (
+                                  <img 
+                                    src={src} 
+                                    alt={alt || ''} 
+                                    loading="lazy"
+                                    className="my-10"
+                                    {...props}
+                                  />
+                                );
+                              },
+                              hr({ node, ...props }) {
+                                return <hr className="my-12" {...props} />;
+                              },
+                              table({ node, children, ...props }) {
+                                return (
+                                  <div className="my-10 overflow-x-auto">
+                                    <table {...props}>
+                                      {children}
+                                    </table>
+                                  </div>
+                                );
+                              }
+                            }}
+                          >
+                            {readmeContent}
+                          </ReactMarkdown>
+                        </article>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="code" className="space-y-6">
