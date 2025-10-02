@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { apiClient } from "@/lib/api-client";
+import { apiClient } from "@/lib/api";
 import { LoginForm } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
@@ -36,7 +36,7 @@ export default function LoginPage() {
       setIsLoading(true);
       setError("");
 
-      const response = await apiClient.post('/auth/login', data);
+      const response = await apiClient.auth.login(data);
       
       if (response.data.success) {
         // Store token and user data
@@ -44,7 +44,7 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(response.data.data.user));
         
         // Redirect to dashboard
-        router.push("/feed");
+        router.push("/dashboard");
       }
     } catch (err: any) {
       console.error("Login error:", err);

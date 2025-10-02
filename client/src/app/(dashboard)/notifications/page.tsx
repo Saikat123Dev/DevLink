@@ -10,21 +10,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import {
-    Bell,
-    BellRing,
-    Check,
-    CheckCheck,
-    Clock,
-    Filter,
-    GitPullRequest,
-    MessageSquare,
-    Settings,
-    Trash2,
-    User,
-    UserPlus,
-    Users,
-    X,
-    Zap
+  Bell,
+  BellRing,
+  Check,
+  CheckCheck,
+  Clock,
+  Filter,
+  GitPullRequest,
+  MessageSquare,
+  Settings,
+  Trash2,
+  User,
+  UserPlus,
+  Users,
+  X,
+  Zap
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -124,7 +124,7 @@ export default function NotificationsPage() {
         data: { 
           postId: 'post1', 
           userName: 'Alex Chen',
-          actionUrl: '/feed/post1' 
+          actionUrl: '/dashboard/post1' 
         }
       },
       {
@@ -139,7 +139,7 @@ export default function NotificationsPage() {
         data: { 
           postId: 'post2', 
           userName: 'Emily Davis',
-          actionUrl: '/feed/post2' 
+          actionUrl: '/dashboard/post2' 
         }
       },
       {

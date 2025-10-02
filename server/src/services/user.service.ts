@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { cacheService } from '../utils/cache.service';
+import { REDIS_KEYS, TTL } from '../utils/redis';
 
 const prisma = new PrismaClient();
 
@@ -19,52 +21,60 @@ export interface CreateSkillInput {
 
 export class UserService {
   async getUserById(userId: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        bio: true,
-        avatar: true,
-        role: true,
-        location: true,
-        githubUrl: true,
-        linkedinUrl: true,
-        twitterUrl: true,
-        createdAt: true,
-        updatedAt: true,
-        skills: {
+    const cacheKey = `${REDIS_KEYS.USER_PROFILE}${userId}`;
+
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
           select: {
             id: true,
             name: true,
-            level: true,
-          },
-          orderBy: [
-            { level: 'asc' }, // PRIMARY first
-            { name: 'asc' }
-          ]
-        },
-        _count: {
-          select: {
-            posts: true,
-            ownedProjects: true,
-            sentConnections: {
-              where: { status: 'ACCEPTED' }
+            email: true,
+            bio: true,
+            avatar: true,
+            role: true,
+            location: true,
+            githubUrl: true,
+            linkedinUrl: true,
+            twitterUrl: true,
+            createdAt: true,
+            updatedAt: true,
+            skills: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+              orderBy: [
+                { level: 'asc' }, // PRIMARY first
+                { name: 'asc' }
+              ]
             },
-            receivedConnections: {
-              where: { status: 'ACCEPTED' }
+            _count: {
+              select: {
+                posts: true,
+                ownedProjects: true,
+                sentConnections: {
+                  where: { status: 'ACCEPTED' }
+                },
+                receivedConnections: {
+                  where: { status: 'ACCEPTED' }
+                }
+              }
             }
           }
+        });
+
+        if (!user) {
+          throw new Error('User not found');
         }
-      }
-    });
 
-    if (!user) {
-      throw new Error('User not found');
-    }
-
-    return user;
+        return user;
+      },
+      TTL.USER_PROFILE
+    );
   }
 
   async updateProfile(userId: string, data: UpdateProfileInput) {
@@ -89,6 +99,9 @@ export class UserService {
         updatedAt: true,
       }
     });
+
+    // Invalidate all user-related caches
+    await cacheService.invalidateUserCache(userId);
 
     return user;
   }
@@ -121,6 +134,9 @@ export class UserService {
       }
     });
 
+    // Invalidate user profile and skills cache
+    await cacheService.invalidateUserCache(userId);
+
     return skill;
   }
 
@@ -140,103 +156,122 @@ export class UserService {
       where: { id: skillId }
     });
 
+    // Invalidate user profile and skills cache
+    await cacheService.invalidateUserCache(userId);
+
     return { message: 'Skill removed successfully' };
   }
 
   async searchUsers(query: string, currentUserId?: string, limit = 20) {
-    const users = await prisma.user.findMany({
-      where: {
-        AND: [
-          {
-            OR: [
+    const cacheKey = `${REDIS_KEYS.USER_SEARCH}${query}:${currentUserId || 'public'}:${limit}`;
+
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const users = await prisma.user.findMany({
+          where: {
+            AND: [
               {
-                name: {
-                  contains: query,
-                  mode: 'insensitive'
-                }
-              },
-              {
-                skills: {
-                  some: {
+                OR: [
+                  {
                     name: {
                       contains: query,
                       mode: 'insensitive'
                     }
+                  },
+                  {
+                    skills: {
+                      some: {
+                        name: {
+                          contains: query,
+                          mode: 'insensitive'
+                        }
+                      }
+                    }
+                  },
+                  {
+                    role: {
+                      contains: query,
+                      mode: 'insensitive'
+                    }
                   }
-                }
+                ]
               },
-              {
-                role: {
-                  contains: query,
-                  mode: 'insensitive'
+              currentUserId ? {
+                id: {
+                  not: currentUserId
                 }
-              }
+              } : {}
             ]
           },
-          currentUserId ? {
-            id: {
-              not: currentUserId
-            }
-          } : {}
-        ]
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        bio: true,
-        avatar: true,
-        role: true,
-        location: true,
-        skills: {
           select: {
             id: true,
             name: true,
-            level: true,
-          },
-          take: 5, // Limit skills shown in search results
-        },
-        _count: {
-          select: {
-            sentConnections: {
-              where: { status: 'ACCEPTED' }
+            email: true,
+            bio: true,
+            avatar: true,
+            role: true,
+            location: true,
+            skills: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+              take: 5, // Limit skills shown in search results
+            },
+            _count: {
+              select: {
+                sentConnections: {
+                  where: { status: 'ACCEPTED' }
+                }
+              }
             }
+          },
+          take: limit,
+          orderBy: {
+            name: 'asc'
           }
-        }
-      },
-      take: limit,
-      orderBy: {
-        name: 'asc'
-      }
-    });
+        });
 
-    return users;
+        return users;
+      },
+      TTL.USER_SEARCH
+    );
   }
 
   async getUserPosts(userId: string) {
-    const posts = await prisma.post.findMany({
-      where: { authorId: userId },
-      select: {
-        id: true,
-        type: true,
-        content: true,
-        codeSnippet: true,
-        language: true,
-        mediaUrls: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
-          }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+    const cacheKey = `${REDIS_KEYS.USER_POSTS}${userId}`;
 
-    return posts;
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const posts = await prisma.post.findMany({
+          where: { authorId: userId },
+          select: {
+            id: true,
+            type: true,
+            content: true,
+            codeSnippet: true,
+            language: true,
+            mediaUrls: true,
+            createdAt: true,
+            updatedAt: true,
+            _count: {
+              select: {
+                likes: true,
+                comments: true,
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          }
+        });
+
+        return posts;
+      },
+      TTL.USER_POSTS
+    );
   }
 }

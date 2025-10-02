@@ -94,7 +94,7 @@ export function GlobalSearch() {
         router.push(`/profile/${id}`);
         break;
       case 'post':
-        router.push(`/feed`); // Could implement post-specific navigation
+        router.push(`/dashboard`); // Could implement post-specific navigation
         break;
       case 'project':
         router.push(`/projects/${id}`);

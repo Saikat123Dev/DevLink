@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { cacheService } from '../utils/cache.service';
+import { REDIS_KEYS, TTL } from '../utils/redis';
 
 const prisma = new PrismaClient();
 
@@ -70,6 +72,9 @@ export class ConnectionService {
       }
     });
 
+    // Invalidate connection caches for both users
+    await cacheService.invalidateConnectionCache(requesterId, receiverId);
+
     return connection;
   }
 
@@ -132,12 +137,20 @@ export class ConnectionService {
       }
     });
 
+    // Invalidate connection caches for both users
+    await cacheService.invalidateConnectionCache(connection.requesterId, connection.receiverId);
+
     return updatedConnection;
   }
 
   async rejectConnectionRequest(requestId: string, userId: string) {
     const connection = await prisma.connection.findUnique({
-      where: { id: requestId }
+      where: { id: requestId },
+      select: {
+        requesterId: true,
+        receiverId: true,
+        status: true
+      }
     });
 
     if (!connection) {
@@ -176,149 +189,168 @@ export class ConnectionService {
       }
     });
 
+    // Invalidate connection caches for both users
+    await cacheService.invalidateConnectionCache(connection.requesterId, connection.receiverId);
+
     return updatedConnection;
   }
 
   async getMyConnections(userId: string, page: number = 1, limit: number = 20) {
-    const skip = (page - 1) * limit;
+    const cacheKey = `${REDIS_KEYS.USER_CONNECTIONS}${userId}:page:${page}:limit:${limit}`;
 
-    const connections = await prisma.connection.findMany({
-      where: {
-        OR: [
-          { requesterId: userId, status: 'ACCEPTED' },
-          { receiverId: userId, status: 'ACCEPTED' }
-        ]
-      },
-      skip,
-      take: limit,
-      include: {
-        requester: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-            bio: true,
-            location: true,
-            skills: {
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const skip = (page - 1) * limit;
+
+        const connections = await prisma.connection.findMany({
+          where: {
+            OR: [
+              { requesterId: userId, status: 'ACCEPTED' },
+              { receiverId: userId, status: 'ACCEPTED' }
+            ]
+          },
+          skip,
+          take: limit,
+          include: {
+            requester: {
               select: {
+                id: true,
                 name: true,
-                level: true
+                avatar: true,
+                role: true,
+                bio: true,
+                location: true,
+                skills: {
+                  select: {
+                    name: true,
+                    level: true
+                  }
+                }
+              }
+            },
+            receiver: {
+              select: {
+                id: true,
+                name: true,
+                avatar: true,
+                role: true,
+                bio: true,
+                location: true,
+                skills: {
+                  select: {
+                    name: true,
+                    level: true
+                  }
+                }
               }
             }
+          },
+          orderBy: {
+            updatedAt: 'desc'
           }
-        },
-        receiver: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-            bio: true,
-            location: true,
-            skills: {
-              select: {
-                name: true,
-                level: true
-              }
-            }
+        });
+
+        // Transform to return the other user (not the current user)
+        const transformedConnections = connections.map(connection => ({
+          id: connection.id,
+          user: connection.requesterId === userId ? connection.receiver : connection.requester,
+          connectedAt: connection.updatedAt,
+          status: connection.status
+        }));
+
+        const totalConnections = await prisma.connection.count({
+          where: {
+            OR: [
+              { requesterId: userId, status: 'ACCEPTED' },
+              { receiverId: userId, status: 'ACCEPTED' }
+            ]
           }
-        }
+        });
+
+        const totalPages = Math.ceil(totalConnections / limit);
+
+        return {
+          connections: transformedConnections,
+          pagination: {
+            page,
+            limit,
+            totalPages,
+            totalConnections,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
+          }
+        };
       },
-      orderBy: {
-        updatedAt: 'desc'
-      }
-    });
-
-    // Transform to return the other user (not the current user)
-    const transformedConnections = connections.map(connection => ({
-      id: connection.id,
-      user: connection.requesterId === userId ? connection.receiver : connection.requester,
-      connectedAt: connection.updatedAt,
-      status: connection.status
-    }));
-
-    const totalConnections = await prisma.connection.count({
-      where: {
-        OR: [
-          { requesterId: userId, status: 'ACCEPTED' },
-          { receiverId: userId, status: 'ACCEPTED' }
-        ]
-      }
-    });
-
-    const totalPages = Math.ceil(totalConnections / limit);
-
-    return {
-      connections: transformedConnections,
-      pagination: {
-        page,
-        limit,
-        totalPages,
-        totalConnections,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-      }
-    };
+      TTL.USER_CONNECTIONS
+    );
   }
 
   async getConnectionRequests(userId: string) {
-    // Get pending requests sent to the user
-    const incomingRequests = await prisma.connection.findMany({
-      where: {
-        receiverId: userId,
-        status: 'PENDING'
-      },
-      include: {
-        requester: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-            bio: true,
-            location: true,
-            skills: {
+    const cacheKey = `${REDIS_KEYS.PENDING_REQUESTS}${userId}`;
+
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        // Get pending requests sent to the user
+        const incomingRequests = await prisma.connection.findMany({
+          where: {
+            receiverId: userId,
+            status: 'PENDING'
+          },
+          include: {
+            requester: {
               select: {
+                id: true,
                 name: true,
-                level: true
+                avatar: true,
+                role: true,
+                bio: true,
+                location: true,
+                skills: {
+                  select: {
+                    name: true,
+                    level: true
+                  }
+                }
               }
             }
+          },
+          orderBy: {
+            createdAt: 'desc'
           }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+        });
 
-    // Get pending requests sent by the user
-    const outgoingRequests = await prisma.connection.findMany({
-      where: {
-        requesterId: userId,
-        status: 'PENDING'
-      },
-      include: {
-        receiver: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-            bio: true,
-            location: true,
+        // Get pending requests sent by the user
+        const outgoingRequests = await prisma.connection.findMany({
+          where: {
+            requesterId: userId,
+            status: 'PENDING'
+          },
+          include: {
+            receiver: {
+              select: {
+                id: true,
+                name: true,
+                avatar: true,
+                role: true,
+                bio: true,
+                location: true,
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
           }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+        });
 
-    return {
-      incoming: incomingRequests,
-      outgoing: outgoingRequests
-    };
+        return {
+          incoming: incomingRequests,
+          outgoing: outgoingRequests
+        };
+      },
+      TTL.PENDING_REQUESTS
+    );
   }
 
   async discoverDevelopers(userId: string, page: number = 1, limit: number = 20, filters?: {

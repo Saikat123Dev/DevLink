@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { cacheService } from '../utils/cache.service';
+import { REDIS_KEYS, TTL } from '../utils/redis';
 
 const prisma = new PrismaClient();
 
@@ -63,43 +65,42 @@ export class PostService {
       }
     });
 
+    // Invalidate post feed and user posts cache
+    await cacheService.invalidatePostCache(post.id, authorId);
+
     return post;
   }
 
   async getPosts(page: number = 1, limit: number = 10, userId?: string) {
-    const skip = (page - 1) * limit;
+    const cacheKey = `${REDIS_KEYS.POST_FEED}page:${page}:limit:${limit}:user:${userId || 'public'}`;
 
-    const posts = await prisma.post.findMany({
-      skip,
-      take: limit,
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-          }
-        },
-        likes: {
-          select: {
-            id: true,
-            userId: true,
-          }
-        },
-        comments: {
-          where: {
-            parentId: null // Only get top-level comments for preview
-          },
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const skip = (page - 1) * limit;
+
+        const posts = await prisma.post.findMany({
+          skip,
+          take: limit,
           include: {
-            user: {
+            author: {
               select: {
                 id: true,
                 name: true,
                 avatar: true,
+                role: true,
               }
             },
-            replies: {
+            likes: {
+              select: {
+                id: true,
+                userId: true,
+              }
+            },
+            comments: {
+              where: {
+                parentId: null // Only get top-level comments for preview
+              },
               include: {
                 user: {
                   select: {
@@ -116,6 +117,20 @@ export class PostService {
                         name: true,
                         avatar: true,
                       }
+                    },
+                    replies: {
+                      include: {
+                        user: {
+                          select: {
+                            id: true,
+                            name: true,
+                            avatar: true,
+                          }
+                        }
+                      },
+                      orderBy: {
+                        createdAt: 'asc'
+                      }
                     }
                   },
                   orderBy: {
@@ -124,99 +139,105 @@ export class PostService {
                 }
               },
               orderBy: {
-                createdAt: 'asc'
+                createdAt: 'desc'
+              },
+              take: 3
+            },
+            _count: {
+              select: {
+                likes: true,
+                comments: true,
               }
             }
           },
           orderBy: {
             createdAt: 'desc'
-          },
-          take: 3
-        },
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
           }
-        }
+        });
+
+        // Add isLiked flag for authenticated user
+        const postsWithLikeStatus = posts.map(post => ({
+          ...post,
+          isLiked: userId ? post.likes.some(like => like.userId === userId) : false
+        }));
+
+        // Get total count for pagination
+        const totalPosts = await prisma.post.count();
+        const totalPages = Math.ceil(totalPosts / limit);
+
+        return {
+          posts: postsWithLikeStatus,
+          pagination: {
+            page,
+            limit,
+            total: totalPosts,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
+          }
+        };
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
-
-    // Add isLiked flag for authenticated user
-    const postsWithLikeStatus = posts.map(post => ({
-      ...post,
-      isLiked: userId ? post.likes.some(like => like.userId === userId) : false
-    }));
-
-    // Get total count for pagination
-    const totalPosts = await prisma.post.count();
-    const totalPages = Math.ceil(totalPosts / limit);
-
-    return {
-      posts: postsWithLikeStatus,
-      pagination: {
-        page,
-        limit,
-        total: totalPosts,
-        totalPages,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
-      }
-    };
+      TTL.POST_FEED
+    );
   }
 
   async getPostById(postId: string, userId?: string) {
-    const post = await prisma.post.findUnique({
-      where: { id: postId },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-          }
-        },
-        likes: {
-          select: {
-            id: true,
-            userId: true,
-          }
-        },
-        comments: {
+    const cacheKey = `${REDIS_KEYS.POST}${postId}:user:${userId || 'public'}`;
+
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const post = await prisma.post.findUnique({
+          where: { id: postId },
           include: {
-            user: {
+            author: {
               select: {
                 id: true,
                 name: true,
                 avatar: true,
+                role: true,
+              }
+            },
+            likes: {
+              select: {
+                id: true,
+                userId: true,
+              }
+            },
+            comments: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    avatar: true,
+                  }
+                }
+              },
+              orderBy: {
+                createdAt: 'desc'
+              }
+            },
+            _count: {
+              select: {
+                likes: true,
+                comments: true,
               }
             }
-          },
-          orderBy: {
-            createdAt: 'desc'
           }
-        },
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
-          }
+        });
+
+        if (!post) {
+          throw new Error('Post not found');
         }
-      }
-    });
 
-    if (!post) {
-      throw new Error('Post not found');
-    }
-
-    return {
-      ...post,
-      isLiked: userId ? post.likes.some(like => like.userId === userId) : false
-    };
+        return {
+          ...post,
+          isLiked: userId ? post.likes.some(like => like.userId === userId) : false
+        };
+      },
+      TTL.POST
+    );
   }
 
   async updatePost(postId: string, authorId: string, data: UpdatePostInput) {
@@ -259,6 +280,9 @@ export class PostService {
       }
     });
 
+    // Invalidate post cache
+    await cacheService.invalidatePostCache(postId, authorId);
+
     return updatedPost;
   }
 
@@ -281,13 +305,17 @@ export class PostService {
       where: { id: postId }
     });
 
+    // Invalidate post cache
+    await cacheService.invalidatePostCache(postId, authorId);
+
     return { message: 'Post deleted successfully' };
   }
 
   async likePost(postId: string, userId: string) {
     // Check if post exists
     const post = await prisma.post.findUnique({
-      where: { id: postId }
+      where: { id: postId },
+      select: { authorId: true }
     });
 
     if (!post) {
@@ -304,12 +332,13 @@ export class PostService {
       }
     });
 
+    let result;
     if (existingLike) {
       // Unlike the post
       await prisma.like.delete({
         where: { id: existingLike.id }
       });
-      return { message: 'Post unliked', isLiked: false };
+      result = { message: 'Post unliked', isLiked: false };
     } else {
       // Like the post
       await prisma.like.create({
@@ -318,14 +347,20 @@ export class PostService {
           postId
         }
       });
-      return { message: 'Post liked', isLiked: true };
+      result = { message: 'Post liked', isLiked: true };
     }
+
+    // Invalidate post cache (likes changed)
+    await cacheService.invalidatePostCache(postId, post.authorId);
+
+    return result;
   }
 
   async addComment(postId: string, userId: string, content: string, parentId?: string) {
     // Check if post exists
     const post = await prisma.post.findUnique({
-      where: { id: postId }
+      where: { id: postId },
+      select: { authorId: true }
     });
 
     if (!post) {
@@ -380,6 +415,9 @@ export class PostService {
       }
     });
 
+    // Invalidate post comments cache
+    await cacheService.invalidatePostCache(postId, post.authorId);
+
     return comment;
   }
 
@@ -430,6 +468,15 @@ export class PostService {
       }
     });
 
+    // Invalidate post comments cache
+    const postData = await prisma.post.findUnique({
+      where: { id: comment.postId },
+      select: { authorId: true }
+    });
+    if (postData) {
+      await cacheService.invalidatePostCache(comment.postId, postData.authorId);
+    }
+
     return updatedComment;
   }
 
@@ -452,24 +499,29 @@ export class PostService {
       where: { id: commentId }
     });
 
+    // Invalidate post comments cache
+    const postData = await prisma.post.findUnique({
+      where: { id: comment.postId },
+      select: { authorId: true }
+    });
+    if (postData) {
+      await cacheService.invalidatePostCache(comment.postId, postData.authorId);
+    }
+
     return { message: 'Comment deleted successfully' };
   }
 
   async getCommentsForPost(postId: string) {
-    const comments = await prisma.comment.findMany({
-      where: {
-        postId: postId,
-        parentId: null // Only get top-level comments
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          }
-        },
-        replies: {
+    const cacheKey = `${REDIS_KEYS.POST_COMMENTS}${postId}`;
+
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const comments = await prisma.comment.findMany({
+          where: {
+            postId: postId,
+            parentId: null // Only get top-level comments
+          },
           include: {
             user: {
               select: {
@@ -486,6 +538,20 @@ export class PostService {
                     name: true,
                     avatar: true,
                   }
+                },
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        avatar: true,
+                      }
+                    }
+                  },
+                  orderBy: {
+                    createdAt: 'asc'
+                  }
                 }
               },
               orderBy: {
@@ -494,16 +560,14 @@ export class PostService {
             }
           },
           orderBy: {
-            createdAt: 'asc'
+            createdAt: 'desc'
           }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+        });
 
-    return comments;
+        return comments;
+      },
+      TTL.POST_COMMENTS
+    );
   }
 
   async getUserPosts(userId: string, page: number = 1, limit: number = 10) {

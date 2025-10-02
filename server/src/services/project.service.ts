@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { cacheService } from '../utils/cache.service';
+import { REDIS_KEYS, TTL } from '../utils/redis';
 
 const prisma = new PrismaClient();
 
@@ -86,167 +88,186 @@ export class ProjectService {
       }
     });
 
+    // Invalidate user's projects cache
+    await cacheService.invalidatePattern(`${REDIS_KEYS.USER_PROJECTS}${ownerId}*`);
+
     return project;
   }
 
   async getProjects(userId: string, page: number = 1, limit: number = 10) {
-    const skip = (page - 1) * limit;
+    const cacheKey = `${REDIS_KEYS.USER_PROJECTS}${userId}:page:${page}:limit:${limit}`;
 
-    // Get projects where user is owner or member
-    const projects = await prisma.project.findMany({
-      where: {
-        OR: [
-          { ownerId: userId },
-          {
-            members: {
-              some: {
-                userId: userId
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const skip = (page - 1) * limit;
+
+        // Get projects where user is owner or member
+        const projects = await prisma.project.findMany({
+          where: {
+            OR: [
+              { ownerId: userId },
+              {
+                members: {
+                  some: {
+                    userId: userId
+                  }
+                }
               }
-            }
-          }
-        ]
-      },
-      skip,
-      take: limit,
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-          }
-        },
-        members: {
+            ]
+          },
+          skip,
+          take: limit,
           include: {
-            user: {
+            owner: {
               select: {
                 id: true,
                 name: true,
                 avatar: true,
                 role: true,
               }
-            }
-          },
-          take: 5 // Limit members shown in preview
-        },
-        _count: {
-          select: {
-            members: true,
-            tasks: true,
-          }
-        }
-      },
-      orderBy: {
-        updatedAt: 'desc'
-      }
-    });
-
-    const totalProjects = await prisma.project.count({
-      where: {
-        OR: [
-          { ownerId: userId },
-          {
+            },
             members: {
-              some: {
-                userId: userId
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    avatar: true,
+                    role: true,
+                  }
+                }
+              },
+              take: 5 // Limit members shown in preview
+            },
+            _count: {
+              select: {
+                members: true,
+                tasks: true,
               }
             }
+          },
+          orderBy: {
+            updatedAt: 'desc'
           }
-        ]
-      }
-    });
+        });
 
-    const totalPages = Math.ceil(totalProjects / limit);
+        const totalProjects = await prisma.project.count({
+          where: {
+            OR: [
+              { ownerId: userId },
+              {
+                members: {
+                  some: {
+                    userId: userId
+                  }
+                }
+              }
+            ]
+          }
+        });
 
-    return {
-      projects,
-      pagination: {
-        page,
-        limit,
-        totalPages,
-        totalProjects,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-      }
-    };
+        const totalPages = Math.ceil(totalProjects / limit);
+
+        return {
+          projects,
+          pagination: {
+            page,
+            limit,
+            totalPages,
+            totalProjects,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
+          }
+        };
+      },
+      TTL.USER_PROJECTS
+    );
   }
 
   async getProjectById(projectId: string, userId: string) {
-    const project = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        OR: [
-          { ownerId: userId },
-          {
-            members: {
-              some: {
-                userId: userId
+    const cacheKey = `${REDIS_KEYS.PROJECT}${projectId}:user:${userId}`;
+
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const project = await prisma.project.findFirst({
+          where: {
+            id: projectId,
+            OR: [
+              { ownerId: userId },
+              {
+                members: {
+                  some: {
+                    userId: userId
+                  }
+                }
+              },
+              // Allow users with pending invitations to view the project
+              {
+                invitations: {
+                  some: {
+                    developerId: userId,
+                    status: 'PENDING'
+                  }
+                }
               }
-            }
+            ]
           },
-          // Allow users with pending invitations to view the project
-          {
-            invitations: {
-              some: {
-                developerId: userId,
-                status: 'PENDING'
-              }
-            }
-          }
-        ]
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            role: true,
-          }
-        },
-        members: {
           include: {
-            user: {
+            owner: {
               select: {
                 id: true,
                 name: true,
                 avatar: true,
                 role: true,
               }
-            }
-          },
-          orderBy: {
-            createdAt: 'asc'
-          }
-        },
-        tasks: {
-          include: {
-            project: {
+            },
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    avatar: true,
+                    role: true,
+                  }
+                }
+              },
+              orderBy: {
+                createdAt: 'asc'
+              }
+            },
+            tasks: {
+              include: {
+                project: {
+                  select: {
+                    id: true,
+                    name: true,
+                  }
+                }
+              },
+              orderBy: {
+                createdAt: 'desc'
+              }
+            },
+            _count: {
               select: {
-                id: true,
-                name: true,
+                members: true,
+                tasks: true,
               }
             }
-          },
-          orderBy: {
-            createdAt: 'desc'
           }
-        },
-        _count: {
-          select: {
-            members: true,
-            tasks: true,
-          }
+        });
+
+        if (!project) {
+          throw new Error('Project not found or access denied');
         }
-      }
-    });
 
-    if (!project) {
-      throw new Error('Project not found or access denied');
-    }
-
-    return project;
+        return project;
+      },
+      TTL.PROJECT
+    );
   }
 
   async updateProject(projectId: string, userId: string, data: UpdateProjectInput) {

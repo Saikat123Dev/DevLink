@@ -77,7 +77,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
         message: 'Sarah commented on your post about React hooks',
         isRead: true,
         createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(), // 6 hours ago
-        data: { postId: 'post1', actionUrl: '/feed' }
+        data: { postId: 'post1', actionUrl: '/dashboard' }
       },
       {
         id: '4',
@@ -86,7 +86,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
         message: 'Alex mentioned you in a discussion about TypeScript',
         isRead: true,
         createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-        data: { postId: 'post2', actionUrl: '/feed' }
+        data: { postId: 'post2', actionUrl: '/dashboard' }
       },
       {
         id: '5',

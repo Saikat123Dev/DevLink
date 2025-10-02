@@ -7,30 +7,30 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePendingInvitationsCount } from "@/hooks/usePendingInvitations";
 import { cn } from "@/lib/utils";
 import { User } from "@/types";
 import {
-    BarChart3,
-    Bell,
-    Briefcase,
-    Code2,
-    LogOut,
-    Mail,
-    Menu,
-    MessageSquare,
-    Search,
-    Settings,
-    User as UserIcon,
-    Users,
-    X
+  BarChart3,
+  Bell,
+  Briefcase,
+  Code2,
+  LogOut,
+  Mail,
+  Menu,
+  MessageSquare,
+  Search,
+  Settings,
+  User as UserIcon,
+  Users,
+  X
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -70,7 +70,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
           {/* Logo and Brand */}
           <div className="flex items-center space-x-4">
             <Link 
-              href="/feed" 
+              href="/dashboard" 
               className="flex items-center space-x-2 transition-opacity hover:opacity-80"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-purple-600">
@@ -87,7 +87,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href || 
-                (item.href !== '/feed' && pathname.startsWith(item.href));
+                (item.href !== '/dashboard' && pathname.startsWith(item.href));
               const showBadge = item.href === '/invitations' && pendingInvitesCount > 0;
               
               return (
@@ -193,7 +193,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
               {menuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href || 
-                  (item.href !== '/feed' && pathname.startsWith(item.href));
+                  (item.href !== '/dashboard' && pathname.startsWith(item.href));
                 const showBadge = item.href === '/invitations' && pendingInvitesCount > 0;
                 
                 return (

@@ -60,7 +60,7 @@ export default function SignupPage() {
         localStorage.setItem("user", JSON.stringify(response.data.data.user));
         
         // Redirect to dashboard
-        router.push("/feed");
+        router.push("/dashboard");
       }
     } catch (err: any) {
       console.error("Signup error:", err);

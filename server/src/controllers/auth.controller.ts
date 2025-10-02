@@ -78,24 +78,84 @@ export class AuthController {
     }
   }
 
-  async logout(req: Request, res: Response): Promise<void> {
-    // In a more complex implementation, you might want to blacklist the token
-    // For now, we'll just send a success response
-    res.status(200).json({
-      success: true,
-      message: 'Logged out successfully'
-    });
+  async logout(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const authHeader = req.headers.authorization;
+      const token = authHeader && authHeader.split(' ')[1];
+
+      if (!token) {
+        res.status(401).json({
+          error: {
+            message: 'Access token required',
+            status: 401
+          }
+        });
+        return;
+      }
+
+      const userId = req.user!.id;
+
+      // Blacklist token and clear session
+      await authService.logout(userId, token);
+
+      res.status(200).json({
+        success: true,
+        message: 'Logged out successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      // Implementation for refresh token logic
-      // For now, just return a placeholder
-      res.status(501).json({
-        error: {
-          message: 'Refresh token not implemented yet',
-          status: 501
-        }
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        res.status(400).json({
+          error: {
+            message: 'Refresh token is required',
+            status: 400
+          }
+        });
+        return;
+      }
+
+      const result = await authService.refreshAccessToken(refreshToken);
+
+      if (!result) {
+        res.status(401).json({
+          error: {
+            message: 'Invalid or expired refresh token',
+            status: 401
+          }
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          token: result.token,
+          refreshToken: result.refreshToken,
+        },
+        message: 'Token refreshed successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async logoutAllDevices(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+
+      // Clear all user sessions
+      await authService.clearAllUserSessions(userId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Logged out from all devices successfully'
       });
     } catch (error) {
       next(error);
