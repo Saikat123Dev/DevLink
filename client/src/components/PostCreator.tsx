@@ -48,23 +48,35 @@ export function PostCreator({ onPostCreated }: PostCreatorProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
+  const processFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    
     // Check if adding these files would exceed the limit
-    if (uploadedFiles.length + files.length > 5) {
+    if (uploadedFiles.length + fileArray.length > 5) {
       toast.error('Maximum 5 files allowed per post');
       return;
     }
+
+    // Filter valid files
+    const validFiles = fileArray.filter(file => {
+      if (file.size > 50 * 1024 * 1024) {
+        toast.error(`${file.name} is too large (max 50MB)`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
 
     setIsUploading(true);
     setUploadProgress(0);
 
     try {
-      const uploadPromises = Array.from(files).map(async (file) => {
+      const uploadPromises = validFiles.map(async (file) => {
         const formData = new FormData();
         formData.append('file', file);
 
@@ -98,6 +110,61 @@ export function PostCreator({ onPostCreated }: PostCreatorProps) {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    await processFiles(files);
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set to false if leaving the drop zone entirely
+    if (e.currentTarget === dropZoneRef.current) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      await processFiles(files);
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) files.push(file);
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      await processFiles(files);
+      toast.success('Image pasted from clipboard');
     }
   };
 
@@ -309,27 +376,41 @@ export function PostCreator({ onPostCreated }: PostCreatorProps) {
                   className="hidden"
                 />
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadedFiles.length >= 5 || isUploading}
-                  className="w-full h-24 rounded-xl border-2 border-dashed border-purple-300 dark:border-purple-700 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-all"
+                <div
+                  ref={dropZoneRef}
+                  onDragEnter={handleDragEnter}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onPaste={handlePaste}
+                  className={`relative w-full h-32 rounded-xl border-2 border-dashed transition-all duration-300 ${
+                    isDragging
+                      ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30 scale-105'
+                      : 'border-purple-300 dark:border-purple-700 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-950/30'
+                  } ${uploadedFiles.length >= 5 || isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  onClick={() => !isUploading && uploadedFiles.length < 5 && fileInputRef.current?.click()}
                 >
                   {isUploading ? (
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                       <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-                      <span className="text-sm font-medium">Uploading... {uploadProgress}%</span>
+                      <span className="text-sm font-medium text-purple-600">Uploading... {uploadProgress}%</span>
                       <Progress value={uploadProgress} className="w-32" />
                     </div>
+                  ) : isDragging ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 animate-pulse">
+                      <Upload className="h-12 w-12 text-purple-600" />
+                      <span className="text-lg font-bold text-purple-600">Drop files here!</span>
+                    </div>
                   ) : (
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                       <Upload className="h-8 w-8 text-purple-600" />
-                      <span className="text-sm font-medium">Click to upload images or videos</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Drag & drop, click, or paste images/videos
+                      </span>
                       <span className="text-xs text-gray-500">Max 5 files, 50MB each</span>
                     </div>
                   )}
-                </Button>
+                </div>
 
                 {uploadedFiles.length > 0 && (
                   <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">

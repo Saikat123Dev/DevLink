@@ -22,11 +22,11 @@ export class CloudinaryService {
   /**
    * Upload an image to Cloudinary
    */
-  async uploadImage(fileBuffer: Buffer, fileName: string): Promise<UploadResult> {
+  async uploadImage(fileBuffer: Buffer, fileName: string, folder: string = 'devlink/posts/images'): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
-          folder: 'devlink/posts/images',
+          folder,
           resource_type: 'image',
           public_id: `${Date.now()}-${fileName}`,
           transformation: [
@@ -116,6 +116,48 @@ export class CloudinaryService {
               publicId: result.public_id,
               resourceType: 'raw',
               format: result.format,
+              bytes: result.bytes,
+            });
+          }
+        }
+      );
+
+      uploadStream.end(fileBuffer);
+    });
+  }
+
+  /**
+   * Upload an avatar image to Cloudinary with avatar-specific transformations
+   */
+  async uploadAvatar(fileBuffer: Buffer, fileName: string): Promise<UploadResult> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'devlink/avatars',
+          resource_type: 'image',
+          public_id: `${Date.now()}-${fileName}`,
+          transformation: [
+            { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+            { quality: 'auto:good' },
+            { fetch_format: 'auto' }
+          ],
+          // Generate smaller thumbnails
+          eager: [
+            { width: 150, height: 150, crop: 'fill', gravity: 'face' },
+            { width: 50, height: 50, crop: 'fill', gravity: 'face' }
+          ],
+        },
+        (error, result) => {
+          if (error) {
+            reject(error);
+          } else if (result) {
+            resolve({
+              url: result.secure_url,
+              publicId: result.public_id,
+              resourceType: 'image',
+              format: result.format,
+              width: result.width,
+              height: result.height,
               bytes: result.bytes,
             });
           }

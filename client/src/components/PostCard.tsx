@@ -1,5 +1,6 @@
 'use client';
 
+import { MediaLightbox } from '@/components/MediaLightbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,8 @@ export function PostCard({ post, onPostUpdate }: PostCardProps) {
   const [editCodeSnippet, setEditCodeSnippet] = useState(post.codeSnippet || '');
   const [editLanguage, setEditLanguage] = useState(post.language || '');
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // Get current user from localStorage to check if they can edit
   const currentUser = typeof window !== 'undefined' ? 
@@ -255,64 +258,99 @@ export function PostCard({ post, onPostUpdate }: PostCardProps) {
         );
       
       case 'MEDIA':
+        const mediaItems = post.mediaUrls?.map((url) => ({
+          url,
+          type: (url.includes('/video/') || 
+                 url.includes('.mp4') || 
+                 url.includes('.webm') || 
+                 url.includes('.mov') ||
+                 url.includes('.avi')) ? 'video' as const : 'image' as const,
+          alt: post.content.substring(0, 100)
+        })) || [];
+
         return (
           <div className="space-y-3">
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
             {post.mediaUrls && post.mediaUrls.length > 0 && (
-              <div className={`grid gap-2 ${
-                post.mediaUrls.length === 1 ? 'grid-cols-1' : 
-                post.mediaUrls.length === 2 ? 'grid-cols-2' : 
-                post.mediaUrls.length === 3 ? 'grid-cols-2 md:grid-cols-3' : 
-                'grid-cols-2 md:grid-cols-2'
-              }`}>
-                {post.mediaUrls.map((url, index) => {
-                  // Cloudinary videos and common video formats
-                  const isVideo = url.includes('/video/') || 
-                                  url.includes('.mp4') || 
-                                  url.includes('.webm') || 
-                                  url.includes('.mov') ||
-                                  url.includes('.avi');
-                  
-                  if (isVideo) {
-                    return (
-                      <div key={index} className="relative rounded-xl overflow-hidden bg-gray-900">
-                        <video
-                          controls
-                          className="w-full h-auto max-h-96 object-contain"
-                          preload="metadata"
-                          onError={(e) => {
-                            console.error('Video failed to load:', url);
-                            e.currentTarget.style.display = 'none';
+              <>
+                <div className={`grid gap-2 ${
+                  post.mediaUrls.length === 1 ? 'grid-cols-1' : 
+                  post.mediaUrls.length === 2 ? 'grid-cols-2' : 
+                  post.mediaUrls.length === 3 ? 'grid-cols-2 md:grid-cols-3' : 
+                  'grid-cols-2 md:grid-cols-2'
+                }`}>
+                  {post.mediaUrls.map((url, index) => {
+                    const isVideo = url.includes('/video/') || 
+                                    url.includes('.mp4') || 
+                                    url.includes('.webm') || 
+                                    url.includes('.mov') ||
+                                    url.includes('.avi');
+                    
+                    if (isVideo) {
+                      return (
+                        <div 
+                          key={index} 
+                          className="relative rounded-xl overflow-hidden bg-gray-900 cursor-pointer hover:ring-2 hover:ring-purple-500 transition-all"
+                          onClick={() => {
+                            setLightboxIndex(index);
+                            setLightboxOpen(true);
                           }}
                         >
-                          <source src={url} type="video/mp4" />
-                          Your browser does not support the video tag.
-                        </video>
+                          <video
+                            src={url}
+                            className="w-full h-auto max-h-96 object-contain"
+                            preload="metadata"
+                            onError={(e) => {
+                              console.error('Video failed to load:', url);
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center">
+                            <div className="bg-black/50 rounded-full p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                              </svg>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        className="relative group cursor-pointer"
+                        onClick={() => {
+                          setLightboxIndex(index);
+                          setLightboxOpen(true);
+                        }}
+                      >
+                        <img
+                          src={url}
+                          alt={`Media ${index + 1}`}
+                          className="rounded-xl w-full h-auto max-h-96 object-cover hover:opacity-95 transition-all shadow-md hover:shadow-xl hover:ring-2 hover:ring-blue-500"
+                          loading="lazy"
+                          onError={(e) => {
+                            console.error('Image failed to load:', url);
+                            const target = e.currentTarget;
+                            target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+CiAgPHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzljYTNhZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD4KPC9zdmc+';
+                            target.classList.add('opacity-50');
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-xl pointer-events-none" />
                       </div>
                     );
-                  }
-                  
-                  return (
-                    <div key={index} className="relative group">
-                      <img
-                        src={url}
-                        alt={`Media ${index + 1}`}
-                        className="rounded-xl w-full h-auto max-h-96 object-cover cursor-pointer hover:opacity-95 transition-all shadow-md hover:shadow-xl"
-                        loading="lazy"
-                        onError={(e) => {
-                          console.error('Image failed to load:', url);
-                          const target = e.currentTarget;
-                          target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+CiAgPHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzljYTNhZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD4KPC9zdmc+';
-                          target.classList.add('opacity-50');
-                        }}
-                        onClick={() => window.open(url, '_blank')}
-                      />
-                      {/* Hover overlay for opening in new tab */}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-xl pointer-events-none" />
-                    </div>
-                  );
-                })}
-              </div>
+                  })}
+                </div>
+                
+                {/* MediaLightbox */}
+                <MediaLightbox
+                  media={mediaItems}
+                  initialIndex={lightboxIndex}
+                  isOpen={lightboxOpen}
+                  onClose={() => setLightboxOpen(false)}
+                />
+              </>
             )}
           </div>
         );

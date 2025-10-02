@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { cacheService } from '../utils/cache.service';
+import { cloudinaryService } from '../utils/cloudinary.util';
 import { REDIS_KEYS, TTL } from '../utils/redis';
 
 const prisma = new PrismaClient();
@@ -273,5 +274,58 @@ export class UserService {
       },
       TTL.USER_POSTS
     );
+  }
+
+  async updateAvatar(userId: string, avatarUrl: string) {
+    // Get current user to check if they have an old avatar to delete
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true }
+    });
+
+    // Update user avatar
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatar: avatarUrl,
+        updatedAt: new Date(),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        bio: true,
+        avatar: true,
+        role: true,
+        location: true,
+        githubUrl: true,
+        linkedinUrl: true,
+        twitterUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      }
+    });
+
+    // Delete old avatar from Cloudinary if it exists and is from our CDN
+    if (currentUser?.avatar && currentUser.avatar.includes('cloudinary.com')) {
+      try {
+        // Extract public ID from Cloudinary URL
+        const urlParts = currentUser.avatar.split('/');
+        const uploadIndex = urlParts.indexOf('upload');
+        if (uploadIndex !== -1) {
+          const publicIdWithExt = urlParts.slice(uploadIndex + 2).join('/');
+          const publicId = publicIdWithExt.split('.')[0];
+          await cloudinaryService.deleteResource(publicId, 'image');
+        }
+      } catch (error) {
+        console.error('Failed to delete old avatar:', error);
+        // Don't throw error, avatar update was successful
+      }
+    }
+
+    // Invalidate all user-related caches
+    await cacheService.invalidateUserCache(userId);
+
+    return user;
   }
 }

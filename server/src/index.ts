@@ -11,6 +11,7 @@ import projectRoutes from './routes/project.routes';
 import userRoutes from './routes/user.routes';
 // New extended feature routes
 import analyticsRoutes from './routes/analytics.routes';
+import avatarRoutes from './routes/avatar.routes';
 import messageRoutes from './routes/messages.routes';
 import notificationRoutes from './routes/notifications.routes';
 import projectInvitationRoutes from './routes/project-invitations.routes';
@@ -67,6 +68,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api', uploadRoutes);
+app.use('/api/avatar', avatarRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);
