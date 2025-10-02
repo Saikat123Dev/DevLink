@@ -4,30 +4,33 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { usePendingInvitationsCount } from "@/hooks/usePendingInvitations";
 import { cn } from "@/lib/utils";
 import { User } from "@/types";
 import {
-  BarChart3,
-  Bell,
-  Briefcase,
-  Code2,
-  LogOut,
-  Menu,
-  MessageSquare,
-  Search,
-  Settings,
-  User as UserIcon,
-  Users,
-  X
+    BarChart3,
+    Bell,
+    Briefcase,
+    Code2,
+    LogOut,
+    Mail,
+    Menu,
+    MessageSquare,
+    Search,
+    Settings,
+    User as UserIcon,
+    Users,
+    X
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -41,6 +44,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { count: pendingInvitesCount } = usePendingInvitationsCount();
 
   const handleLogout = () => {
     localStorage.removeItem("authToken");
@@ -53,6 +57,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
       { icon: UserIcon, label: "Profile", href: `/profile/${user.id}` },
       { icon: Briefcase, label: "Projects", href: "/projects" },
       { icon: Users, label: "Connections", href: "/connections" },
+      { icon: Mail, label: "Invitations", href: "/invitations" },
       { icon: Bell, label: "Notifications", href: "/notifications" },
       { icon: MessageSquare, label: "Messages", href: "/messages" },
       { icon: BarChart3, label: "Analytics", href: "/analytics" },
@@ -83,13 +88,14 @@ export function DashboardNav({ user }: DashboardNavProps) {
               const Icon = item.icon;
               const isActive = pathname === item.href || 
                 (item.href !== '/feed' && pathname.startsWith(item.href));
+              const showBadge = item.href === '/invitations' && pendingInvitesCount > 0;
               
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-accent hover:text-accent-foreground",
+                    "flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-accent hover:text-accent-foreground relative",
                     isActive
                       ? "bg-accent text-accent-foreground shadow-sm"
                       : "text-muted-foreground"
@@ -97,6 +103,11 @@ export function DashboardNav({ user }: DashboardNavProps) {
                 >
                   <Icon className="h-4 w-4" />
                   <span>{item.label}</span>
+                  {showBadge && (
+                    <Badge className="ml-1 h-5 min-w-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs px-1.5">
+                      {pendingInvitesCount}
+                    </Badge>
+                  )}
                 </Link>
               );
             })}
@@ -183,6 +194,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
                 const Icon = item.icon;
                 const isActive = pathname === item.href || 
                   (item.href !== '/feed' && pathname.startsWith(item.href));
+                const showBadge = item.href === '/invitations' && pendingInvitesCount > 0;
                 
                 return (
                   <Link
@@ -197,7 +209,12 @@ export function DashboardNav({ user }: DashboardNavProps) {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     <Icon className="h-4 w-4" />
-                    <span>{item.label}</span>
+                    <span className="flex-1">{item.label}</span>
+                    {showBadge && (
+                      <Badge className="h-5 min-w-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs px-1.5">
+                        {pendingInvitesCount}
+                      </Badge>
+                    )}
                   </Link>
                 );
               })}

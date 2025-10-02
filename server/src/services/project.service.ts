@@ -130,20 +130,6 @@ export class ProjectService {
           },
           take: 5 // Limit members shown in preview
         },
-        tasks: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-            dueDate: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-          orderBy: {
-            createdAt: 'desc'
-          }
-        },
         _count: {
           select: {
             members: true,
@@ -196,6 +182,15 @@ export class ProjectService {
             members: {
               some: {
                 userId: userId
+              }
+            }
+          },
+          // Allow users with pending invitations to view the project
+          {
+            invitations: {
+              some: {
+                developerId: userId,
+                status: 'PENDING'
               }
             }
           }

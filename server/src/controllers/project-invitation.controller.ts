@@ -288,7 +288,21 @@ export class ProjectInvitationController {
   async respondToInvitation(req: AuthenticatedRequest, res: Response) {
     try {
       const { invitationId } = req.params;
-      const { status } = respondToInvitationSchema.parse(req.body);
+
+      // Parse and validate the request body
+      let status: 'ACCEPTED' | 'DECLINED';
+      try {
+        const parsed = respondToInvitationSchema.parse(req.body);
+        status = parsed.status;
+      } catch (validationError: any) {
+        console.error('Validation error:', validationError);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid request body. Expected { status: "ACCEPTED" | "DECLINED" }',
+          error: validationError.errors || validationError.message
+        });
+      }
+
       const userId = req.user!.id;
 
       const invitation = await prisma.projectInvitation.findFirst({
@@ -324,13 +338,30 @@ export class ProjectInvitationController {
 
       // If accepted, add user as project member
       if (status === 'ACCEPTED') {
-        await prisma.projectMember.create({
-          data: {
-            projectId: invitation.projectId,
-            userId,
-            role: 'MEMBER'
+        // Check if user is already a member to prevent duplicates
+        const existingMember = await prisma.projectMember.findUnique({
+          where: {
+            projectId_userId: {
+              projectId: invitation.projectId,
+              userId
+            }
           }
         });
+
+        // Only create member if they don't already exist
+        if (!existingMember) {
+          await prisma.projectMember.create({
+            data: {
+              projectId: invitation.projectId,
+              userId,
+              role: 'MEMBER'
+            }
+          });
+
+          console.log(`User ${userId} added as member to project ${invitation.projectId}`);
+        } else {
+          console.log(`User ${userId} is already a member of project ${invitation.projectId}`);
+        }
 
         // Notify project owner
         await notificationService.createNotification({
