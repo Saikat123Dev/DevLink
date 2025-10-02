@@ -10,9 +10,12 @@ export interface UpdateProfileInput {
   bio?: string;
   role?: string;
   location?: string;
+  website?: string;
   githubUrl?: string;
   linkedinUrl?: string;
   twitterUrl?: string;
+  isAvailable?: boolean;
+  availabilityStatus?: string;
 }
 
 export interface CreateSkillInput {
@@ -37,9 +40,12 @@ export class UserService {
             avatar: true,
             role: true,
             location: true,
+            website: true,
             githubUrl: true,
             linkedinUrl: true,
             twitterUrl: true,
+            isAvailable: true,
+            availabilityStatus: true,
             createdAt: true,
             updatedAt: true,
             skills: {
@@ -93,9 +99,12 @@ export class UserService {
         avatar: true,
         role: true,
         location: true,
+        website: true,
         githubUrl: true,
         linkedinUrl: true,
         twitterUrl: true,
+        isAvailable: true,
+        availabilityStatus: true,
         createdAt: true,
         updatedAt: true,
       }

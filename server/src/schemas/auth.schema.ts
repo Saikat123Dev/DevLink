@@ -51,7 +51,15 @@ export const updateProfileSchema = z.object({
     twitterUrl: z.string()
       .url('Invalid Twitter URL')
       .optional()
-      .or(z.literal(''))
+      .or(z.literal('')),
+    website: z.string()
+      .url('Invalid website URL')
+      .optional()
+      .or(z.literal('')),
+    isAvailable: z.boolean()
+      .optional(),
+    availabilityStatus: z.enum(['AVAILABLE', 'BUSY', 'OPEN_TO_WORK', 'NOT_AVAILABLE', 'FREELANCE'])
+      .optional()
   })
 });
 

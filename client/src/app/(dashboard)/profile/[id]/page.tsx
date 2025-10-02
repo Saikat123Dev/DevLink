@@ -1,7 +1,12 @@
 'use client';
 
+import { ActivityItem, ActivityTimeline } from '@/components/ActivityTimeline';
+import { AvailabilityBadge, AvailabilityStatus } from '@/components/AvailabilityBadge';
 import { AvatarUpload } from '@/components/AvatarUpload';
 import { DashboardNav } from '@/components/DashboardNav';
+import { ProfileAchievements } from '@/components/ProfileAchievements';
+import { ProfileCompleteness } from '@/components/ProfileCompleteness';
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { apiClient } from '@/lib/api-client';
 import { formatDistanceToNow } from 'date-fns';
@@ -51,6 +57,8 @@ interface User {
   githubUrl?: string;
   linkedinUrl?: string;
   twitterUrl?: string;
+  isAvailable?: boolean;
+  availabilityStatus?: AvailabilityStatus;
   createdAt: string;
   updatedAt: string;
   skills: Array<{
@@ -94,7 +102,8 @@ export default function UserProfilePage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+ 
   const [profileForm, setProfileForm] = useState<ProfileFormData>({
     name: '',
     bio: '',
@@ -151,12 +160,47 @@ export default function UserProfilePage() {
           linkedinUrl: userData.linkedinUrl || '',
           twitterUrl: userData.twitterUrl || ''
         });
+
+        // Fetch activity data
+        await fetchUserActivity();
       }
     } catch (error: any) {
       console.error('Failed to fetch user:', error);
       toast.error('Failed to load user profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserActivity = async () => {
+    try {
+      // Fetch user's posts
+      const postsResponse = await apiClient.get(`/users/${userId}/posts`);
+      const activities: ActivityItem[] = [];
+
+      if (postsResponse.data.success && postsResponse.data.data.posts) {
+        const posts = postsResponse.data.data.posts.slice(0, 5); // Get latest 5 posts
+        posts.forEach((post: any) => {
+          activities.push({
+            id: `post-${post.id}`,
+            type: 'POST',
+            title: 'Created a new post',
+            description: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : ''),
+            timestamp: post.createdAt,
+            metadata: {
+              postType: post.type,
+            },
+          });
+        });
+      }
+
+      // Sort activities by timestamp (most recent first)
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      setActivities(activities);
+    } catch (error) {
+      console.error('Failed to fetch activity:', error);
+      // Don't show error toast for activity, it's not critical
     }
   };
 
@@ -226,6 +270,27 @@ export default function UserProfilePage() {
       const updatedUser = { ...currentUser, avatar: newAvatarUrl };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setCurrentUser(updatedUser);
+    }
+  };
+
+  const handleAvailabilityChange = async (status: AvailabilityStatus) => {
+    try {
+      const response = await apiClient.put(`/users/${userId}`, {
+        availabilityStatus: status,
+        isAvailable: status === 'AVAILABLE' || status === 'FREELANCE' || status === 'OPEN_TO_WORK',
+      });
+
+      if (response.data.success) {
+        toast.success('Availability status updated');
+        setUser(prev => ({
+          ...prev!,
+          availabilityStatus: status,
+          isAvailable: status === 'AVAILABLE' || status === 'FREELANCE' || status === 'OPEN_TO_WORK',
+        }));
+      }
+    } catch (error: any) {
+      console.error('Failed to update availability:', error);
+      toast.error('Failed to update availability status');
     }
   };
 
@@ -346,6 +411,12 @@ export default function UserProfilePage() {
                           {user.role}
                         </Badge>
                       )}
+                      {/* Availability Status Badge */}
+                      <AvailabilityBadge
+                        status={user.availabilityStatus || (user.isAvailable ? 'AVAILABLE' : 'NOT_AVAILABLE')}
+                        isEditable={isOwnProfile}
+                        onStatusChange={handleAvailabilityChange}
+                      />
                     </div>
                     {user.bio && (
                       <p className="text-base text-gray-600 dark:text-gray-400 max-w-2xl leading-relaxed">
@@ -632,6 +703,56 @@ export default function UserProfilePage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Tabbed Content Section - Activity, Progress, Achievements */}
+          <Tabs defaultValue="activity" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:w-auto lg:inline-grid">
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+              <TabsTrigger value="achievements">Achievements</TabsTrigger>
+              <TabsTrigger value="completeness">Progress</TabsTrigger>
+              {isOwnProfile && <TabsTrigger value="views">Profile Views</TabsTrigger>}
+            </TabsList>
+
+            <TabsContent value="activity" className="space-y-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    Recent Activity
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {isOwnProfile ? 'Your' : `${user.name}'s`} latest actions on DevLink
+                  </p>
+                </div>
+              </div>
+              <ActivityTimeline
+                activities={activities}
+                userName={user.name}
+                userAvatar={user.avatar}
+              />
+            </TabsContent>
+
+            <TabsContent value="completeness" className="space-y-6">
+              {isOwnProfile ? (
+                <ProfileCompleteness user={user} />
+              ) : (
+                <Card className="border border-gray-200 dark:border-gray-800">
+                  <CardContent className="p-12 text-center">
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Profile progress is only visible to the profile owner
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="achievements" className="space-y-6">
+              <ProfileAchievements user={user} />
+            </TabsContent>
+
+          </Tabs>
 
           {/* Skills Section - Professional Design */}
           <Card className="border border-gray-200 dark:border-gray-800">

@@ -11,26 +11,28 @@ datasource db {
 }
 
 model User {
-  id                String   @id @default(uuid())
-  email             String   @unique
-  password          String
-  name              String
-  bio               String?
-  avatar            String?
-  role              String?
-  location          String?
-  githubUrl         String?
-  linkedinUrl       String?
-  twitterUrl        String?
-  isOnline          Boolean  @default(false)
-  lastActive        DateTime @default(now())
-  experience        String?
-  hourlyRate        Int?
-  isAvailable       Boolean  @default(true)
-  rating            Float    @default(0)
-  completedProjects Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  password           String
+  name               String
+  bio                String?
+  avatar             String?
+  role               String?
+  location           String?
+  website            String?
+  githubUrl          String?
+  linkedinUrl        String?
+  twitterUrl         String?
+  isOnline           Boolean  @default(false)
+  lastActive         DateTime @default(now())
+  experience         String?
+  hourlyRate         Int?
+  isAvailable        Boolean  @default(true)
+  availabilityStatus String?  @default("AVAILABLE")
+  rating             Float    @default(0)
+  completedProjects  Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   // Relations
   skills              Skill[]
