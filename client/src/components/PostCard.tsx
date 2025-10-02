@@ -257,41 +257,58 @@ export function PostCard({ post, onPostUpdate }: PostCardProps) {
       case 'MEDIA':
         return (
           <div className="space-y-3">
-            <p className="text-sm leading-relaxed">{post.content}</p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
             {post.mediaUrls && post.mediaUrls.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className={`grid gap-2 ${
+                post.mediaUrls.length === 1 ? 'grid-cols-1' : 
+                post.mediaUrls.length === 2 ? 'grid-cols-2' : 
+                post.mediaUrls.length === 3 ? 'grid-cols-2 md:grid-cols-3' : 
+                'grid-cols-2 md:grid-cols-2'
+              }`}>
                 {post.mediaUrls.map((url, index) => {
-                  const isVideo = url.includes('.mp4') || url.includes('.webm') || url.includes('.mov');
+                  // Cloudinary videos and common video formats
+                  const isVideo = url.includes('/video/') || 
+                                  url.includes('.mp4') || 
+                                  url.includes('.webm') || 
+                                  url.includes('.mov') ||
+                                  url.includes('.avi');
                   
                   if (isVideo) {
                     return (
-                      <video
-                        key={index}
-                        controls
-                        className="rounded-lg max-h-64 w-full object-cover"
-                        onError={(e) => {
-                          console.error('Video failed to load:', url);
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      >
-                        <source src={url} />
-                        Your browser does not support the video tag.
-                      </video>
+                      <div key={index} className="relative rounded-xl overflow-hidden bg-gray-900">
+                        <video
+                          controls
+                          className="w-full h-auto max-h-96 object-contain"
+                          preload="metadata"
+                          onError={(e) => {
+                            console.error('Video failed to load:', url);
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        >
+                          <source src={url} type="video/mp4" />
+                          Your browser does not support the video tag.
+                        </video>
+                      </div>
                     );
                   }
                   
                   return (
-                    <div key={index} className="relative">
+                    <div key={index} className="relative group">
                       <img
                         src={url}
                         alt={`Media ${index + 1}`}
-                        className="rounded-lg max-h-64 w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                        className="rounded-xl w-full h-auto max-h-96 object-cover cursor-pointer hover:opacity-95 transition-all shadow-md hover:shadow-xl"
+                        loading="lazy"
                         onError={(e) => {
                           console.error('Image failed to load:', url);
-                          e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+CiAgPHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvcnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD4KICA8L3N2Zz4K';
+                          const target = e.currentTarget;
+                          target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+CiAgPHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzljYTNhZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD4KPC9zdmc+';
+                          target.classList.add('opacity-50');
                         }}
                         onClick={() => window.open(url, '_blank')}
                       />
+                      {/* Hover overlay for opening in new tab */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-xl pointer-events-none" />
                     </div>
                   );
                 })}

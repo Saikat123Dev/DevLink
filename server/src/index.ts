@@ -15,6 +15,7 @@ import messageRoutes from './routes/messages.routes';
 import notificationRoutes from './routes/notifications.routes';
 import projectInvitationRoutes from './routes/project-invitations.routes';
 import searchRoutes from './routes/search.routes';
+import uploadRoutes from './routes/upload.routes';
 
 // Load environment variables
 dotenv.config();
@@ -65,6 +66,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api', uploadRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);
